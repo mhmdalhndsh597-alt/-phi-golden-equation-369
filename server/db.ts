@@ -74,11 +74,21 @@ export async function getUserByOpenId(openId: string) {
 export async function getProfile(userId: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select({ id: users.id, name: users.name, email: users.email, bio: users.bio, age: users.age, location: users.location, gender: users.gender, verificationStatus: users.verificationStatus, createdAt: users.createdAt }).from(users).where(eq(users.id, userId)).limit(1);
+  const result = await db.select({ id: users.id, name: users.name, email: users.email, bio: users.bio, age: users.age, location: users.location, gender: users.gender, verificationStatus: users.verificationStatus, curriculumVitae: users.curriculumVitae, specifications: users.specifications, skills: users.skills, occupation: users.occupation, education: users.education, maritalStatus: users.maritalStatus, createdAt: users.createdAt }).from(users).where(eq(users.id, userId)).limit(1);
   return result[0];
 }
 
-export async function updateProfile(userId: number, input: { name?: string; bio?: string; age?: number; location?: string; gender?: "male" | "female" | "other" }) {
+export function normalizeFeedLimit(limit = 30) {
+  return Math.min(Math.max(Math.trunc(limit), 1), 100);
+}
+
+export function validateProfilePatch(input: { age?: number }) {
+  if (input.age !== undefined && (input.age < 18 || input.age > 90)) throw new Error("Age must be between 18 and 90");
+  return true;
+}
+
+export async function updateProfile(userId: number, input: { name?: string; bio?: string; age?: number; location?: string; gender?: "male" | "female" | "other"; curriculumVitae?: string; specifications?: string; skills?: string; occupation?: string; education?: string; maritalStatus?: "single" | "divorced" | "widowed" }) {
+  validateProfilePatch(input);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const values = {
@@ -87,6 +97,12 @@ export async function updateProfile(userId: number, input: { name?: string; bio?
     ...(input.age === undefined ? {} : { age: input.age }),
     ...(input.location === undefined ? {} : { location: input.location.trim().slice(0, 120) || null }),
     ...(input.gender === undefined ? {} : { gender: input.gender }),
+    ...(input.curriculumVitae === undefined ? {} : { curriculumVitae: input.curriculumVitae.trim().slice(0, 4_000) || null }),
+    ...(input.specifications === undefined ? {} : { specifications: input.specifications.trim().slice(0, 2_000) || null }),
+    ...(input.skills === undefined ? {} : { skills: input.skills.trim().slice(0, 1_000) || null }),
+    ...(input.occupation === undefined ? {} : { occupation: input.occupation.trim().slice(0, 160) || null }),
+    ...(input.education === undefined ? {} : { education: input.education.trim().slice(0, 160) || null }),
+    ...(input.maritalStatus === undefined ? {} : { maritalStatus: input.maritalStatus }),
   };
   if (input.age !== undefined && (input.age < 18 || input.age > 90)) throw new Error("Age must be between 18 and 90");
   if (Object.keys(values).length === 0) throw new Error("No profile fields provided");
@@ -120,7 +136,7 @@ export async function listFeed(limit = 30) {
     .from(posts)
     .leftJoin(users, eq(posts.userId, users.id))
     .orderBy(desc(posts.createdAt))
-    .limit(Math.min(Math.max(limit, 1), 100));
+    .limit(normalizeFeedLimit(limit));
 
   return Promise.all(rows.map(async ({ post, author }) => {
     const postComments = await db

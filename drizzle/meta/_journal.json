@@ -15,6 +15,13 @@
       "when": 1788351810322,
       "tag": "0001_flippant_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1788478957307,
+      "tag": "0002_windy_black_knight",
+      "breakpoints": true
     }
   ]
 }

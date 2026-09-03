@@ -20,6 +20,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getGiftStoreState } from "./giftStoreState";
 import PostComposer from "./PostComposer";
+import { AdditionalPosts, nextFeedLimit } from "./feedView";
 
 const imageFallback = "https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=1200&q=85";
 
@@ -55,7 +56,8 @@ function GiftStore({ gifts, target, onClose, onGift, loading, error }: { gifts: 
 
 export default function Feed() {
   const { user } = useAuth();
-  const feedQuery = trpc.feed.list.useQuery({ limit: 10 });
+  const [feedLimit, setFeedLimit] = useState(10);
+  const feedQuery = trpc.feed.list.useQuery({ limit: feedLimit });
   const messagesQuery = trpc.feed.messages.useQuery({ limit: 10 }, { enabled: Boolean(user), retry: false });
   const walletQuery = trpc.wallet.me.useQuery(undefined, { enabled: Boolean(user), retry: false });
   const giftsQuery = trpc.gifts.catalog.useQuery();
@@ -194,6 +196,7 @@ export default function Feed() {
               <div className="mt-5 flex items-end gap-3"><label className="flex min-h-12 flex-1 items-center gap-2 rounded-2xl border border-[#e5dbcf] bg-[#fffdf9] px-4 focus-within:border-[#c3865d] focus-within:ring-2 focus-within:ring-[#c3865d]/20"><span className="sr-only">اكتب تعليقًا</span><input id="comment-box" value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleComment(); }} placeholder="اكتب تعليقًا لطيفًا..." className="w-full bg-transparent text-sm outline-none placeholder:text-[#a2aaa4]" /><button type="button" aria-label="إرسال هدية داخل التعليق" onClick={() => requireAuth(async () => { if (!comment.trim()) { toast("اكتب تعليقًا أولًا", { description: "بعد نشره يمكنك إرفاق هدية اختيارية." }); return; } try { const result = await commentMutation.mutateAsync({ postId: activePost.id, body: comment }); setComment(""); setGiftTarget({ type: "comment", id: result.id, recipientId: activePost.authorId }); } catch { toast.error("تعذر إنشاء التعليق"); } })} className="rounded-full p-2 text-[#b77952] transition-colors hover:bg-[#f6e8da]"><Gift size={19} /></button></label><button type="button" onClick={handleComment} aria-label="إرسال التعليق" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#20352d] text-white transition-all hover:bg-[#2e4a3d] active:scale-[.97]"><Send size={17} /></button></div>
             </div>
           </article>
+          <AdditionalPosts entries={feedQuery.data} feedLimit={feedLimit} onLoadMore={() => setFeedLimit(nextFeedLimit)} />
         </section>
 
         <aside id="messages" className="space-y-5 lg:sticky lg:top-24 lg:self-start"><div className="rounded-[26px] border border-[#e3d9ce] bg-[#20352d] p-5 text-white shadow-[0_14px_35px_rgba(36,53,45,.08)]"><div className="flex items-center justify-between"><span className="text-xs tracking-[.16em] text-[#e7b28f]">محفظة الهدايا</span><Wallet size={18} className="text-[#e7b28f]" /></div><p className="mt-4 font-serif text-3xl">{!user ? "—" : walletQuery.isPending ? "..." : walletQuery.isError ? "غير متاح" : `${walletQuery.data?.balanceEgp ?? "0.00"} ج.م`}</p><p className="mt-2 text-xs text-[#c8d1ca]">الرصيد للعرض فقط. الشحن سيُضاف بعد ربط مزود دفع موثوق.</p></div>

@@ -52,7 +52,7 @@ export const appRouter = router({
   profile: router({
     me: protectedProcedure.query(({ ctx }) => getProfile(ctx.user.id)),
     update: protectedProcedure
-      .input(z.object({ name: z.string().max(160).optional(), bio: z.string().max(2_000).optional(), age: z.number().int().optional(), location: z.string().max(120).optional(), gender: z.enum(["male", "female", "other"]).optional() }))
+      .input(z.object({ name: z.string().max(160).optional(), bio: z.string().max(2_000).optional(), age: z.number().int().optional(), location: z.string().max(120).optional(), gender: z.enum(["male", "female", "other"]).optional(), curriculumVitae: z.string().max(4_000).optional(), specifications: z.string().max(2_000).optional(), skills: z.string().max(1_000).optional(), occupation: z.string().max(160).optional(), education: z.string().max(160).optional(), maritalStatus: z.enum(["single", "divorced", "widowed"]).optional() }))
       .mutation(async ({ ctx, input }) => {
         try {
           return await updateProfile(ctx.user.id, input);
