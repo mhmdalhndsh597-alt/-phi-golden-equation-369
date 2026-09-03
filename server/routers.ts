@@ -15,6 +15,7 @@ import {
   listAdminPosts,
   listAdminUsers,
   listAdminGifts,
+  getWalletBalance,
   updateProfile,
   sendGiftAtomic,
   sendMessage,
@@ -36,6 +37,10 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+
+  wallet: router({
+    me: protectedProcedure.query(({ ctx }) => getWalletBalance(ctx.user.id)),
   }),
 
   admin: router({

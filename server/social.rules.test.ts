@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { uploadVerifiedImage } from "./media";
+import { moderateText } from "./moderation";
 
 function contextFor(userId = 1): TrpcContext {
   return {
@@ -60,6 +61,12 @@ describe("social safety rules", () => {
       messageId: 12,
       idempotencyKey: "both-targets-key-0001",
     })).rejects.toThrow("exactly one");
+  });
+
+  it("rejects unsafe text and accepts normal social text", () => {
+    expect(() => moderateText("hello\u0000world", 100, "Post")).toThrow("unsupported");
+    expect(() => moderateText("javascript:alert(1)", 100, "Comment")).toThrow("unsupported");
+    expect(moderateText("مساء الخير", 100, "Message")).toBe("مساء الخير");
   });
 
   it("keeps unauthenticated free posting protected", async () => {

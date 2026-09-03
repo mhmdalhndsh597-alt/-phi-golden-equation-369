@@ -12,6 +12,7 @@ import {
   type InsertUser,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { moderateText } from "./moderation";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -134,6 +135,13 @@ export async function listFeed(limit = 30) {
   }));
 }
 
+export async function getWalletBalance(userId: number) {
+  const db = await getDb();
+  if (!db) return { balanceEgp: "0.00" };
+  const wallet = await db.select({ balanceEgp: wallets.balanceEgp }).from(wallets).where(eq(wallets.userId, userId)).limit(1);
+  return { balanceEgp: wallet[0]?.balanceEgp ?? "0.00" };
+}
+
 export async function listActiveGifts() {
   const db = await getDb();
   if (!db) return [];
@@ -143,7 +151,7 @@ export async function listActiveGifts() {
 export async function createPost(input: { userId: number; body?: string; imageUrl?: string; imageMimeType?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const body = input.body?.trim() || null;
+  const body = input.body ? moderateText(input.body, 10_000, "Post") : null;
   const imageUrl = input.imageUrl?.trim() || null;
   if (!body && !imageUrl) throw new Error("A post must contain text or an image");
   if (imageUrl) {
@@ -158,8 +166,7 @@ export async function createPost(input: { userId: number; body?: string; imageUr
 export async function addComment(input: { postId: number; userId: number; body: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  const body = input.body.trim();
-  if (!body || body.length > 2_000) throw new Error("Comment must be between 1 and 2,000 characters");
+  const body = moderateText(input.body, 2_000, "Comment");
   const post = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, input.postId)).limit(1);
   if (!post[0]) throw new Error("Post not found");
   const result = await db.insert(comments).values({ postId: input.postId, userId: input.userId, body });
@@ -201,8 +208,7 @@ export async function sendMessage(input: { senderId: number; recipientId: number
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   if (input.senderId === input.recipientId) throw new Error("You cannot message yourself");
-  const body = input.body.trim();
-  if (!body || body.length > 4_000) throw new Error("Message must be between 1 and 4,000 characters");
+  const body = moderateText(input.body, 4_000, "Message");
   const recipient = await db.select({ id: users.id }).from(users).where(eq(users.id, input.recipientId)).limit(1);
   if (!recipient[0]) throw new Error("Recipient not found");
   const result = await db.insert(messages).values({ senderId: input.senderId, recipientId: input.recipientId, body });
