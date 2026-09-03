@@ -199,7 +199,7 @@ export default function Home() {
                 >
                   ابدأ بخطوة واضحة <ArrowLeft size={18} />
                 </button>
-                <a href="#discover" className="inline-flex items-center gap-2 rounded-full border border-white/30 px-5 py-3.5 text-sm text-[#fffaf2] transition-colors hover:bg-white/10">
+                <a href="/feed" className="inline-flex items-center gap-2 rounded-full border border-white/30 px-5 py-3.5 text-sm text-[#fffaf2] transition-colors hover:bg-white/10">
                   تصفّح بهدوء <ArrowUpLeft size={16} />
                 </a>
               </div>

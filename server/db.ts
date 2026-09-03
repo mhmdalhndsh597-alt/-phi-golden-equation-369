@@ -1,0 +1,243 @@
+import { and, desc, eq, or, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/mysql2";
+import {
+  comments,
+  giftTransactions,
+  gifts,
+  interactions,
+  messages,
+  posts,
+  users,
+  wallets,
+  type InsertUser,
+} from "../drizzle/schema";
+import { ENV } from "./_core/env";
+
+let _db: ReturnType<typeof drizzle> | null = null;
+
+export async function getDb() {
+  if (!_db && process.env.DATABASE_URL) {
+    try {
+      _db = drizzle(process.env.DATABASE_URL);
+    } catch (error) {
+      console.warn("[Database] Failed to connect:", error);
+      _db = null;
+    }
+  }
+  return _db;
+}
+
+export async function upsertUser(user: InsertUser): Promise<void> {
+  if (!user.openId) throw new Error("User openId is required for upsert");
+  const db = await getDb();
+  if (!db) return;
+
+  const values: InsertUser = { openId: user.openId };
+  const updateSet: Record<string, unknown> = {};
+  const textFields = ["name", "email", "loginMethod"] as const;
+
+  for (const field of textFields) {
+    if (user[field] !== undefined) {
+      values[field] = user[field] ?? null;
+      updateSet[field] = user[field] ?? null;
+    }
+  }
+  if (user.lastSignedIn !== undefined) {
+    values.lastSignedIn = user.lastSignedIn;
+    updateSet.lastSignedIn = user.lastSignedIn;
+  }
+  if (user.role !== undefined) {
+    values.role = user.role;
+    updateSet.role = user.role;
+  } else if (user.openId === ENV.ownerOpenId) {
+    values.role = "admin";
+    updateSet.role = "admin";
+  }
+  values.lastSignedIn ??= new Date();
+  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
+
+  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+  const savedUser = await getUserByOpenId(user.openId);
+  if (savedUser) {
+    await db.insert(wallets).values({ userId: savedUser.id, balanceEgp: "0.00" }).onDuplicateKeyUpdate({ set: { userId: savedUser.id } });
+  }
+}
+
+export async function getUserByOpenId(openId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  return result[0];
+}
+
+export async function listFeed(limit = 30) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ post: posts, author: users })
+    .from(posts)
+    .leftJoin(users, eq(posts.userId, users.id))
+    .orderBy(desc(posts.createdAt))
+    .limit(Math.min(Math.max(limit, 1), 100));
+
+  return Promise.all(rows.map(async ({ post, author }) => {
+    const postComments = await db
+      .select({ comment: comments, author: users, giftTransaction: giftTransactions, gift: gifts })
+      .from(comments)
+      .leftJoin(users, eq(comments.userId, users.id))
+      .leftJoin(giftTransactions, eq(giftTransactions.commentId, comments.id))
+      .leftJoin(gifts, eq(gifts.id, giftTransactions.giftId))
+      .where(eq(comments.postId, post.id))
+      .orderBy(desc(comments.createdAt));
+    return { ...post, author, comments: postComments };
+  }));
+}
+
+export async function listActiveGifts() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(gifts).where(eq(gifts.isActive, 1)).orderBy(gifts.priceEgp);
+}
+
+export async function createPost(input: { userId: number; body?: string; imageUrl?: string; imageMimeType?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const body = input.body?.trim() || null;
+  const imageUrl = input.imageUrl?.trim() || null;
+  if (!body && !imageUrl) throw new Error("A post must contain text or an image");
+  if (imageUrl) {
+    if (!/^https:\/\//i.test(imageUrl)) throw new Error("Images must use HTTPS URLs");
+    if (/\.(mp4|mov|webm|avi|mkv)(?:$|[?#])/i.test(imageUrl)) throw new Error("Video posts are not allowed");
+    if (!/^image\/(jpeg|png|webp|gif)$/i.test(input.imageMimeType ?? "")) throw new Error("Only JPEG, PNG, WebP, or GIF images are allowed");
+  }
+  const result = await db.insert(posts).values({ userId: input.userId, body, imageUrl, imageMimeType: imageUrl ? input.imageMimeType!.toLowerCase() : null, mediaType: imageUrl ? "image" : null });
+  return { id: result[0].insertId };
+}
+
+export async function addComment(input: { postId: number; userId: number; body: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const body = input.body.trim();
+  if (!body || body.length > 2_000) throw new Error("Comment must be between 1 and 2,000 characters");
+  const post = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, input.postId)).limit(1);
+  if (!post[0]) throw new Error("Post not found");
+  const result = await db.insert(comments).values({ postId: input.postId, userId: input.userId, body });
+  return { id: result[0].insertId };
+}
+
+export async function toggleInteraction(input: { userId: number; type: "like" | "follow"; postId?: number; targetUserId?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  if (input.type === "like" && !input.postId) throw new Error("A like requires a post");
+  if (input.type === "follow" && !input.targetUserId) throw new Error("A follow requires a user");
+  if (input.type === "follow" && input.targetUserId === input.userId) throw new Error("You cannot follow yourself");
+  const conditions = [eq(interactions.userId, input.userId), eq(interactions.type, input.type)];
+  if (input.postId) conditions.push(eq(interactions.postId, input.postId));
+  if (input.targetUserId) conditions.push(eq(interactions.targetUserId, input.targetUserId));
+  const existing = await db.select({ id: interactions.id }).from(interactions).where(and(...conditions)).limit(1);
+  if (existing[0]) {
+    await db.delete(interactions).where(eq(interactions.id, existing[0].id));
+    return { active: false };
+  }
+  await db.insert(interactions).values({ userId: input.userId, type: input.type, postId: input.postId, targetUserId: input.targetUserId });
+  return { active: true };
+}
+
+export async function listMessages(userId: number, limit = 30) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ message: messages, giftTransaction: giftTransactions, gift: gifts })
+    .from(messages)
+    .leftJoin(giftTransactions, eq(giftTransactions.messageId, messages.id))
+    .leftJoin(gifts, eq(gifts.id, giftTransactions.giftId))
+    .where(or(eq(messages.senderId, userId), eq(messages.recipientId, userId)))
+    .orderBy(desc(messages.createdAt))
+    .limit(Math.min(Math.max(limit, 1), 100));
+}
+
+export async function sendMessage(input: { senderId: number; recipientId: number; body: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  if (input.senderId === input.recipientId) throw new Error("You cannot message yourself");
+  const body = input.body.trim();
+  if (!body || body.length > 4_000) throw new Error("Message must be between 1 and 4,000 characters");
+  const recipient = await db.select({ id: users.id }).from(users).where(eq(users.id, input.recipientId)).limit(1);
+  if (!recipient[0]) throw new Error("Recipient not found");
+  const result = await db.insert(messages).values({ senderId: input.senderId, recipientId: input.recipientId, body });
+  return { id: result[0].insertId };
+}
+
+function decimalToCents(value: string | number) {
+  const normalized = String(value);
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) throw new Error("Invalid monetary amount");
+  const [whole, fraction = ""] = normalized.split(".");
+  // DECIMAL(12,2) has at most 10 whole digits, so integer cents remain exact and safe.
+  return Number(whole) * 100 + Number((fraction + "00").slice(0, 2));
+}
+
+export type SendGiftInput = {
+  senderId: number;
+  recipientId: number;
+  giftId: number;
+  commentId?: number;
+  messageId?: number;
+  idempotencyKey: string;
+};
+
+/**
+ * Critical-money path. The wallet row is locked with SELECT ... FOR UPDATE
+ * inside the same transaction as the balance check, deduction, and audit log.
+ */
+export async function sendGiftAtomic(input: SendGiftInput) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  if (input.senderId === input.recipientId) throw new Error("You cannot send a gift to yourself");
+  if (!/^[A-Za-z0-9:_-]{16,80}$/.test(input.idempotencyKey)) throw new Error("Invalid idempotency key");
+  if ((input.commentId ? 1 : 0) + (input.messageId ? 1 : 0) !== 1) throw new Error("A gift must be attached to exactly one comment or message");
+
+  return db.transaction(async (tx) => {
+    const previous = await tx.select().from(giftTransactions).where(and(eq(giftTransactions.senderId, input.senderId), eq(giftTransactions.idempotencyKey, input.idempotencyKey))).limit(1);
+    if (previous[0]) return { transactionId: previous[0].id, amountEgp: previous[0].amountEgp, balanceEgp: null, idempotent: true };
+
+    const gift = (await tx.select().from(gifts).where(and(eq(gifts.id, input.giftId), eq(gifts.isActive, 1))).limit(1))[0];
+    if (!gift) throw new Error("Gift is unavailable");
+
+    const recipient = (await tx.select({ id: users.id }).from(users).where(eq(users.id, input.recipientId)).limit(1))[0];
+    if (!recipient) throw new Error("Recipient not found");
+
+    if (input.commentId) {
+      const comment = (await tx.select({ userId: comments.userId }).from(comments).where(eq(comments.id, input.commentId)).limit(1))[0];
+      if (!comment || comment.userId !== input.recipientId) throw new Error("Gift recipient does not match the comment owner");
+    }
+    if (input.messageId) {
+      const message = (await tx.select().from(messages).where(eq(messages.id, input.messageId)).limit(1))[0];
+      if (!message || message.recipientId !== input.recipientId || message.senderId !== input.senderId) throw new Error("Gift recipient does not match the message");
+    }
+
+    // Ensure a zero-balance wallet exists, then lock the exact row.
+    await tx.insert(wallets).values({ userId: input.senderId, balanceEgp: "0.00" }).onDuplicateKeyUpdate({ set: { userId: input.senderId } });
+    const wallet = (await tx.select().from(wallets).where(eq(wallets.userId, input.senderId)).limit(1).for("update"))[0];
+    if (!wallet) throw new Error("Sender wallet not found");
+
+    const priceCents = decimalToCents(gift.priceEgp);
+    const balanceCents = decimalToCents(wallet.balanceEgp);
+    if (balanceCents < priceCents) throw new Error("Insufficient wallet balance");
+
+    await tx.update(wallets).set({ balanceEgp: sql`${wallets.balanceEgp} - ${gift.priceEgp}` }).where(eq(wallets.id, wallet.id));
+    const inserted = await tx.insert(giftTransactions).values({
+      senderId: input.senderId,
+      recipientId: input.recipientId,
+      giftId: input.giftId,
+      postId: null,
+      commentId: input.commentId,
+      messageId: input.messageId,
+      amountEgp: gift.priceEgp,
+      idempotencyKey: input.idempotencyKey,
+      status: "completed",
+    });
+    const newBalanceCents = balanceCents - priceCents;
+    const balanceEgp = `${Math.floor(newBalanceCents / 100)}.${String(newBalanceCents % 100).padStart(2, "0")}`;
+    return { transactionId: inserted[0].insertId, amountEgp: gift.priceEgp, balanceEgp, idempotent: false };
+  });
+}
