@@ -70,6 +70,47 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
+export async function getProfile(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select({ id: users.id, name: users.name, email: users.email, bio: users.bio, age: users.age, location: users.location, gender: users.gender, verificationStatus: users.verificationStatus, createdAt: users.createdAt }).from(users).where(eq(users.id, userId)).limit(1);
+  return result[0];
+}
+
+export async function updateProfile(userId: number, input: { name?: string; bio?: string; age?: number; location?: string; gender?: "male" | "female" | "other" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const values = {
+    ...(input.name === undefined ? {} : { name: input.name.trim().slice(0, 160) || null }),
+    ...(input.bio === undefined ? {} : { bio: input.bio.trim().slice(0, 2_000) || null }),
+    ...(input.age === undefined ? {} : { age: input.age }),
+    ...(input.location === undefined ? {} : { location: input.location.trim().slice(0, 120) || null }),
+    ...(input.gender === undefined ? {} : { gender: input.gender }),
+  };
+  if (input.age !== undefined && (input.age < 18 || input.age > 90)) throw new Error("Age must be between 18 and 90");
+  if (Object.keys(values).length === 0) throw new Error("No profile fields provided");
+  await db.update(users).set(values).where(eq(users.id, userId));
+  return getProfile(userId);
+}
+
+export async function listAdminUsers(limit = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: users.id, name: users.name, email: users.email, age: users.age, location: users.location, verificationStatus: users.verificationStatus, role: users.role, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).orderBy(desc(users.createdAt)).limit(Math.min(Math.max(limit, 1), 100));
+}
+
+export async function listAdminGifts(limit = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(gifts).orderBy(gifts.priceEgp).limit(Math.min(Math.max(limit, 1), 100));
+}
+
+export async function listAdminPosts(limit = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ post: posts, author: users }).from(posts).leftJoin(users, eq(posts.userId, users.id)).orderBy(desc(posts.createdAt)).limit(Math.min(Math.max(limit, 1), 100));
+}
+
 export async function listFeed(limit = 30) {
   const db = await getDb();
   if (!db) return [];

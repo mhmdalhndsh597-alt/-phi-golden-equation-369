@@ -19,6 +19,7 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getGiftStoreState } from "./giftStoreState";
+import PostComposer from "./PostComposer";
 
 const imageFallback = "https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=1200&q=85";
 
@@ -80,12 +81,14 @@ export default function Feed() {
   }
   if (!livePost) {
     return (
-      <div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#f5f1ea] px-6 text-center text-[#26382f]">
-        <div className="max-w-md rounded-[28px] border border-[#e3d9ce] bg-[#fffdf9] p-8 shadow-[0_18px_48px_rgba(36,53,45,.07)]">
-          <Sparkles className="mx-auto text-[#b77952]" size={28} />
-          <h1 className="mt-4 font-serif text-3xl">لا توجد منشورات بعد</h1>
-          <p className="mt-3 text-sm leading-7 text-[#738078]">ابدأ أول مساحة حوار في وصال. المنشور النصي أو الصورة المقبولة هما كل ما تحتاجه، والتفاعل مجاني بالكامل.</p>
-          <button type="button" onClick={() => user ? toast("سيظهر محرر المنشورات هنا قريبًا") : startLogin()} className="mt-6 rounded-xl bg-[#20352d] px-5 py-3 text-sm font-semibold text-white">{user ? "إنشاء أول منشور" : "تسجيل الدخول للبدء"}</button>
+      <div dir="rtl" className="min-h-screen bg-[#f5f1ea] px-5 py-10 text-[#26382f] sm:px-8">
+        <div className="mx-auto max-w-2xl space-y-5">
+          <PostComposer onCreated={() => void feedQuery.refetch()} />
+          <div className="rounded-[28px] border border-[#e3d9ce] bg-[#fffdf9] p-8 text-center shadow-[0_18px_48px_rgba(36,53,45,.07)]">
+            <Sparkles className="mx-auto text-[#b77952]" size={28} />
+            <h1 className="mt-4 font-serif text-3xl">لا توجد منشورات بعد</h1>
+            <p className="mt-3 text-sm leading-7 text-[#738078]">ابدأ أول مساحة حوار في وصال. المنشور النصي أو الصورة المقبولة هما كل ما تحتاجه، والتفاعل مجاني بالكامل.</p>
+          </div>
         </div>
       </div>
     );
@@ -174,7 +177,8 @@ export default function Feed() {
 
       <main id="feed" className="mx-auto grid max-w-7xl gap-8 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_330px] lg:px-10 lg:py-10">
         <section className="min-w-0">
-          <div className="mb-6 flex items-end justify-between"><div><p className="text-xs font-semibold tracking-[.16em] text-[#ad7150]">مساحة الوصال</p><h1 className="mt-2 font-serif text-3xl text-[#24352d] sm:text-4xl">أخبار من يشاركونك المعنى</h1></div><button type="button" onClick={() => setSaved((current) => !current)} className={`hidden items-center gap-2 rounded-full border px-4 py-2 text-xs sm:flex ${saved ? "border-[#c3865d] bg-[#fff4ea] text-[#a66743]" : "border-[#e1d8ce] text-[#6b786f]"}`}><Bookmark size={15} fill={saved ? "currentColor" : "none"} /> محفوظات</button></div>
+          <PostComposer onCreated={() => void feedQuery.refetch()} />
+          <div className="mb-6 mt-6 flex items-end justify-between"><div><p className="text-xs font-semibold tracking-[.16em] text-[#ad7150]">مساحة الوصال</p><h1 className="mt-2 font-serif text-3xl text-[#24352d] sm:text-4xl">أخبار من يشاركونك المعنى</h1></div><button type="button" onClick={() => setSaved((current) => !current)} className={`hidden items-center gap-2 rounded-full border px-4 py-2 text-xs sm:flex ${saved ? "border-[#c3865d] bg-[#fff4ea] text-[#a66743]" : "border-[#e1d8ce] text-[#6b786f]"}`}><Bookmark size={15} fill={saved ? "currentColor" : "none"} /> محفوظات</button></div>
 
           <article className="overflow-hidden rounded-[28px] border border-[#e3d9ce] bg-[#fffdf9] shadow-[0_18px_48px_rgba(36,53,45,.07)]">
             <div className="flex items-center justify-between px-5 py-5 sm:px-7"><div className="flex items-center gap-3"><img src={activePost.avatar} alt="" className="h-11 w-11 rounded-full object-cover ring-2 ring-[#f0d7c2]" /><div><div className="flex items-center gap-1.5"><h2 className="font-semibold text-[#33483b]">{activePost.name}</h2><BadgeCheck size={15} className="text-[#b77952]" /></div><p className="text-xs text-[#8b958d]">{activePost.location}</p></div></div><button type="button" aria-label="المزيد" className="rounded-full p-2 text-[#8a948c] hover:bg-[#f2ece3]"><MoreHorizontal size={19} /></button></div>

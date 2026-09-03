@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { uploadVerifiedImage } from "./media";
 import {
   addComment,
@@ -11,6 +11,11 @@ import {
   listActiveGifts,
   listFeed,
   listMessages,
+  getProfile,
+  listAdminPosts,
+  listAdminUsers,
+  listAdminGifts,
+  updateProfile,
   sendGiftAtomic,
   sendMessage,
   toggleInteraction,
@@ -31,6 +36,25 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+
+  admin: router({
+    users: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(100) }).optional()).query(({ input }) => listAdminUsers(input?.limit ?? 100)),
+    posts: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(100) }).optional()).query(({ input }) => listAdminPosts(input?.limit ?? 100)),
+    gifts: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(100) }).optional()).query(({ input }) => listAdminGifts(input?.limit ?? 100)),
+  }),
+
+  profile: router({
+    me: protectedProcedure.query(({ ctx }) => getProfile(ctx.user.id)),
+    update: protectedProcedure
+      .input(z.object({ name: z.string().max(160).optional(), bio: z.string().max(2_000).optional(), age: z.number().int().optional(), location: z.string().max(120).optional(), gender: z.enum(["male", "female", "other"]).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await updateProfile(ctx.user.id, input);
+        } catch (error) {
+          return featureError(error);
+        }
+      }),
   }),
 
   feed: router({

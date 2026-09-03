@@ -19,5 +19,6 @@ export async function uploadVerifiedImage(userId: number, base64Data: string) {
   if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) throw new Error("Image must be between 1 byte and 5 MB");
   const signature = detectImageSignature(buffer);
   if (!signature) throw new Error("Only valid JPEG, PNG, WebP, or GIF images are allowed");
-  return storagePut(`users/${userId}/posts/${crypto.randomUUID()}.${signature.extension}`, buffer, signature.mime);
+  const uploaded = await storagePut(`users/${userId}/posts/${crypto.randomUUID()}.${signature.extension}`, buffer, signature.mime);
+  return { ...uploaded, mime: signature.mime };
 }
