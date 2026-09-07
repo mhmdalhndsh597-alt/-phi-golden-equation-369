@@ -1,6 +1,10 @@
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
+  chatMembers,
+  chatMessages,
+  chatReports,
+  chatRooms,
   comments,
   giftTransactions,
   gifts,
@@ -13,6 +17,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { moderateText } from "./moderation";
+import { calculateCompatibility } from "./compatibility";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -74,20 +79,40 @@ export async function getUserByOpenId(openId: string) {
 export async function getProfile(userId: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select({ id: users.id, name: users.name, email: users.email, bio: users.bio, age: users.age, location: users.location, gender: users.gender, verificationStatus: users.verificationStatus, curriculumVitae: users.curriculumVitae, specifications: users.specifications, skills: users.skills, occupation: users.occupation, education: users.education, maritalStatus: users.maritalStatus, createdAt: users.createdAt }).from(users).where(eq(users.id, userId)).limit(1);
+  const result = await db.select({ id: users.id, name: users.name, email: users.email, bio: users.bio, age: users.age, location: users.location, gender: users.gender, verificationStatus: users.verificationStatus, curriculumVitae: users.curriculumVitae, specifications: users.specifications, skills: users.skills, occupation: users.occupation, education: users.education, maritalStatus: users.maritalStatus, preferredAgeMin: users.preferredAgeMin, preferredAgeMax: users.preferredAgeMax, preferredLocations: users.preferredLocations, interests: users.interests, showCompatibility: users.showCompatibility, createdAt: users.createdAt }).from(users).where(eq(users.id, userId)).limit(1);
   return result[0];
+}
+
+export async function listCompatibilitySuggestions(userId: number, limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  const current = (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0];
+  if (!current) return [];
+  const candidates = await db.select().from(users).where(and(sql`${users.id} <> ${userId}`, eq(users.showCompatibility, 1))).orderBy(desc(users.updatedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 50));
+  return candidates.map((candidate) => ({
+    id: candidate.id,
+    name: candidate.name,
+    location: candidate.location,
+    bio: candidate.bio,
+    verificationStatus: candidate.verificationStatus,
+    accountType: candidate.accountType,
+    compatibility: calculateCompatibility(current, candidate),
+  })).sort((a, b) => b.compatibility.percentage - a.compatibility.percentage);
 }
 
 export function normalizeFeedLimit(limit = 30) {
   return Math.min(Math.max(Math.trunc(limit), 1), 100);
 }
 
-export function validateProfilePatch(input: { age?: number }) {
+export function validateProfilePatch(input: { age?: number; preferredAgeMin?: number; preferredAgeMax?: number }) {
   if (input.age !== undefined && (input.age < 18 || input.age > 90)) throw new Error("Age must be between 18 and 90");
+  if (input.preferredAgeMin !== undefined && (input.preferredAgeMin < 18 || input.preferredAgeMin > 90)) throw new Error("Minimum preferred age must be between 18 and 90");
+  if (input.preferredAgeMax !== undefined && (input.preferredAgeMax < 18 || input.preferredAgeMax > 90)) throw new Error("Maximum preferred age must be between 18 and 90");
+  if (input.preferredAgeMin !== undefined && input.preferredAgeMax !== undefined && input.preferredAgeMin > input.preferredAgeMax) throw new Error("Minimum preferred age cannot exceed maximum");
   return true;
 }
 
-export async function updateProfile(userId: number, input: { name?: string; bio?: string; age?: number; location?: string; gender?: "male" | "female" | "other"; curriculumVitae?: string; specifications?: string; skills?: string; occupation?: string; education?: string; maritalStatus?: "single" | "divorced" | "widowed" }) {
+export async function updateProfile(userId: number, input: { name?: string; bio?: string; age?: number; location?: string; gender?: "male" | "female" | "other"; curriculumVitae?: string; specifications?: string; skills?: string; occupation?: string; education?: string; maritalStatus?: "single" | "divorced" | "widowed"; preferredAgeMin?: number; preferredAgeMax?: number; preferredLocations?: string; interests?: string; showCompatibility?: number }) {
   validateProfilePatch(input);
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -103,6 +128,11 @@ export async function updateProfile(userId: number, input: { name?: string; bio?
     ...(input.occupation === undefined ? {} : { occupation: input.occupation.trim().slice(0, 160) || null }),
     ...(input.education === undefined ? {} : { education: input.education.trim().slice(0, 160) || null }),
     ...(input.maritalStatus === undefined ? {} : { maritalStatus: input.maritalStatus }),
+    ...(input.preferredAgeMin === undefined ? {} : { preferredAgeMin: input.preferredAgeMin }),
+    ...(input.preferredAgeMax === undefined ? {} : { preferredAgeMax: input.preferredAgeMax }),
+    ...(input.preferredLocations === undefined ? {} : { preferredLocations: input.preferredLocations.trim().slice(0, 500) || null }),
+    ...(input.interests === undefined ? {} : { interests: input.interests.trim().slice(0, 1_000) || null }),
+    ...(input.showCompatibility === undefined ? {} : { showCompatibility: input.showCompatibility ? 1 : 0 }),
   };
   if (input.age !== undefined && (input.age < 18 || input.age > 90)) throw new Error("Age must be between 18 and 90");
   if (Object.keys(values).length === 0) throw new Error("No profile fields provided");
@@ -149,6 +179,88 @@ export async function listFeed(limit = 30) {
       .orderBy(desc(comments.createdAt));
     return { ...post, author, comments: postComments };
   }));
+}
+
+export function canJoinChatRoom(status: "draft" | "scheduled" | "live" | "closed" | "archived") {
+  return status === "scheduled" || status === "live";
+}
+
+export function canWriteToChatRoom(status: "draft" | "scheduled" | "live" | "closed" | "archived") {
+  return status === "live";
+}
+
+export async function listChatRooms() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(chatRooms).where(or(eq(chatRooms.status, "scheduled"), eq(chatRooms.status, "live"), eq(chatRooms.status, "closed"))).orderBy(desc(chatRooms.createdAt));
+}
+
+export async function createChatRoom(input: { userId: number; name: string; description?: string; scheduledAt?: Date }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const result = await db.insert(chatRooms).values({ createdBy: input.userId, name: input.name.trim().slice(0, 160), description: input.description?.trim().slice(0, 2_000) || null, scheduledAt: input.scheduledAt ?? null, status: input.scheduledAt ? "scheduled" : "live" });
+  const roomId = Number(result[0].insertId);
+  await db.insert(chatMembers).values({ roomId, userId: input.userId, role: "owner" });
+  return getChatRoom(roomId);
+}
+
+export async function getChatRoom(roomId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(chatRooms).where(eq(chatRooms.id, roomId)).limit(1);
+  return rows[0];
+}
+
+async function requireRoomMember(userId: number, roomId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const membership = await db.select().from(chatMembers).where(and(eq(chatMembers.roomId, roomId), eq(chatMembers.userId, userId))).limit(1);
+  if (!membership[0]) throw new Error("You must join this room first");
+  return { db, member: membership[0] };
+}
+
+export async function joinChatRoom(userId: number, roomId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const room = await getChatRoom(roomId);
+  if (!room) throw new Error("Room not found");
+  if (!canJoinChatRoom(room.status)) throw new Error("This room is not open");
+  await db.insert(chatMembers).values({ roomId, userId, role: "member" }).onDuplicateKeyUpdate({ set: { roomId } });
+  return room;
+}
+
+export async function listChatMessages(userId: number, roomId: number, limit = 50) {
+  const { db } = await requireRoomMember(userId, roomId);
+  return db.select({ message: chatMessages, author: users, giftTransaction: giftTransactions, gift: gifts }).from(chatMessages).leftJoin(users, eq(chatMessages.userId, users.id)).leftJoin(giftTransactions, eq(giftTransactions.chatMessageId, chatMessages.id)).leftJoin(gifts, eq(gifts.id, giftTransactions.giftId)).where(eq(chatMessages.roomId, roomId)).orderBy(desc(chatMessages.createdAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 100));
+}
+
+export async function sendChatMessage(userId: number, roomId: number, body: string) {
+  const { db, member } = await requireRoomMember(userId, roomId);
+  const room = await getChatRoom(roomId);
+  if (!room || !canWriteToChatRoom(room.status)) throw new Error("This room is not accepting messages");
+  if (member.mutedUntil && member.mutedUntil.getTime() > Date.now()) throw new Error("You are muted in this room");
+  const cleanBody = moderateText(body, 2_000, "Chat message");
+  const result = await db.insert(chatMessages).values({ roomId, userId, body: cleanBody });
+  return { id: Number(result[0].insertId), roomId, userId, body: cleanBody };
+}
+
+export async function setChatRoomStatus(userId: number, roomId: number, status: "scheduled" | "live" | "closed" | "archived") {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const [room] = await db.select().from(chatRooms).where(eq(chatRooms.id, roomId)).limit(1);
+  if (!room) throw new Error("Room not found");
+  const [actor] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+  const [membership] = await db.select({ role: chatMembers.role }).from(chatMembers).where(and(eq(chatMembers.roomId, roomId), eq(chatMembers.userId, userId))).limit(1);
+  if (actor?.role !== "admin" && membership?.role !== "owner") throw new Error("Only the room owner or admin can change room status");
+  await db.update(chatRooms).set({ status, closedAt: status === "closed" || status === "archived" ? new Date() : null, closedBy: status === "closed" || status === "archived" ? userId : null }).where(eq(chatRooms.id, roomId));
+  return getChatRoom(roomId);
+}
+
+export async function reportChatMessage(userId: number, roomId: number, messageId: number | undefined, reason: string) {
+  const { db } = await requireRoomMember(userId, roomId);
+  const cleanReason = moderateText(reason, 500, "Report reason");
+  await db.insert(chatReports).values({ roomId, messageId: messageId ?? null, reporterId: userId, reason: cleanReason });
+  return { success: true } as const;
 }
 
 export async function getWalletBalance(userId: number) {
@@ -239,12 +351,26 @@ function decimalToCents(value: string | number) {
   return Number(whole) * 100 + Number((fraction + "00").slice(0, 2));
 }
 
+export function validateChatGiftRoomState(status: string | undefined, hasMessageOwnerMatch: boolean, hasSenderMembership: boolean) {
+  if (status !== "live" || !hasMessageOwnerMatch) throw new Error("Room gifts are available only for messages in a live room");
+  if (!hasSenderMembership) throw new Error("You must be a room member to send a room gift");
+  return true;
+}
+
+export function validateGiftContext(input: { commentId?: number; messageId?: number; chatRoomId?: number; chatMessageId?: number }) {
+  if ((input.commentId ? 1 : 0) + (input.messageId ? 1 : 0) + (input.chatMessageId ? 1 : 0) !== 1) throw new Error("A gift must be attached to exactly one context");
+  if (input.chatMessageId && !input.chatRoomId) throw new Error("A room message gift requires a room");
+  return true;
+}
+
 export type SendGiftInput = {
   senderId: number;
   recipientId: number;
   giftId: number;
   commentId?: number;
   messageId?: number;
+  chatRoomId?: number;
+  chatMessageId?: number;
   idempotencyKey: string;
 };
 
@@ -257,7 +383,7 @@ export async function sendGiftAtomic(input: SendGiftInput) {
   if (!db) throw new Error("Database unavailable");
   if (input.senderId === input.recipientId) throw new Error("You cannot send a gift to yourself");
   if (!/^[A-Za-z0-9:_-]{16,80}$/.test(input.idempotencyKey)) throw new Error("Invalid idempotency key");
-  if ((input.commentId ? 1 : 0) + (input.messageId ? 1 : 0) !== 1) throw new Error("A gift must be attached to exactly one comment or message");
+  validateGiftContext(input);
 
   return db.transaction(async (tx) => {
     const previous = await tx.select().from(giftTransactions).where(and(eq(giftTransactions.senderId, input.senderId), eq(giftTransactions.idempotencyKey, input.idempotencyKey))).limit(1);
@@ -277,6 +403,12 @@ export async function sendGiftAtomic(input: SendGiftInput) {
       const message = (await tx.select().from(messages).where(eq(messages.id, input.messageId)).limit(1))[0];
       if (!message || message.recipientId !== input.recipientId || message.senderId !== input.senderId) throw new Error("Gift recipient does not match the message");
     }
+    if (input.chatMessageId) {
+      const room = (await tx.select().from(chatRooms).where(eq(chatRooms.id, input.chatRoomId!)).limit(1))[0];
+      const chatMessage = (await tx.select().from(chatMessages).where(and(eq(chatMessages.id, input.chatMessageId), eq(chatMessages.roomId, input.chatRoomId!))).limit(1))[0];
+      const senderMembership = (await tx.select().from(chatMembers).where(and(eq(chatMembers.roomId, input.chatRoomId!), eq(chatMembers.userId, input.senderId))).limit(1))[0];
+      validateChatGiftRoomState(room?.status, Boolean(chatMessage && chatMessage.userId === input.recipientId), Boolean(senderMembership));
+    }
 
     // Ensure a zero-balance wallet exists, then lock the exact row.
     await tx.insert(wallets).values({ userId: input.senderId, balanceEgp: "0.00" }).onDuplicateKeyUpdate({ set: { userId: input.senderId } });
@@ -295,6 +427,8 @@ export async function sendGiftAtomic(input: SendGiftInput) {
       postId: null,
       commentId: input.commentId,
       messageId: input.messageId,
+      chatRoomId: input.chatRoomId,
+      chatMessageId: input.chatMessageId,
       amountEgp: gift.priceEgp,
       idempotencyKey: input.idempotencyKey,
       status: "completed",

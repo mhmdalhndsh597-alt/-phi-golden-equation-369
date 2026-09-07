@@ -20,6 +20,14 @@ import {
   sendGiftAtomic,
   sendMessage,
   toggleInteraction,
+  listCompatibilitySuggestions,
+  listChatRooms,
+  createChatRoom,
+  joinChatRoom,
+  listChatMessages,
+  sendChatMessage,
+  setChatRoomStatus,
+  reportChatMessage,
 } from "./db";
 
 const idempotencyKey = z.string().regex(/^[A-Za-z0-9:_-]{16,80}$/, "Invalid idempotency key");
@@ -52,14 +60,15 @@ export const appRouter = router({
   profile: router({
     me: protectedProcedure.query(({ ctx }) => getProfile(ctx.user.id)),
     update: protectedProcedure
-      .input(z.object({ name: z.string().max(160).optional(), bio: z.string().max(2_000).optional(), age: z.number().int().optional(), location: z.string().max(120).optional(), gender: z.enum(["male", "female", "other"]).optional(), curriculumVitae: z.string().max(4_000).optional(), specifications: z.string().max(2_000).optional(), skills: z.string().max(1_000).optional(), occupation: z.string().max(160).optional(), education: z.string().max(160).optional(), maritalStatus: z.enum(["single", "divorced", "widowed"]).optional() }))
+      .input(z.object({ name: z.string().max(160).optional(), bio: z.string().max(2_000).optional(), age: z.number().int().optional(), location: z.string().max(120).optional(), gender: z.enum(["male", "female", "other"]).optional(), curriculumVitae: z.string().max(4_000).optional(), specifications: z.string().max(2_000).optional(), skills: z.string().max(1_000).optional(), occupation: z.string().max(160).optional(), education: z.string().max(160).optional(), maritalStatus: z.enum(["single", "divorced", "widowed"]).optional(), preferredAgeMin: z.number().int().optional(), preferredAgeMax: z.number().int().optional(), preferredLocations: z.string().max(500).optional(), interests: z.string().max(1_000).optional(), showCompatibility: z.boolean().optional() }))
       .mutation(async ({ ctx, input }) => {
         try {
-          return await updateProfile(ctx.user.id, input);
+          return await updateProfile(ctx.user.id, { ...input, showCompatibility: input.showCompatibility === undefined ? undefined : input.showCompatibility ? 1 : 0 });
         } catch (error) {
           return featureError(error);
         }
       }),
+    suggestions: protectedProcedure.input(z.object({ limit: z.number().int().min(1).max(50).default(20) }).optional()).query(({ ctx, input }) => listCompatibilitySuggestions(ctx.user.id, input?.limit ?? 20)),
   }),
 
   feed: router({
@@ -123,6 +132,28 @@ export const appRouter = router({
       }),
   }),
 
+  chat: router({
+    rooms: protectedProcedure.query(() => listChatRooms()),
+    create: protectedProcedure.input(z.object({ name: z.string().min(2).max(160), description: z.string().max(2_000).optional(), scheduledAt: z.coerce.date().optional() })).mutation(async ({ ctx, input }) => {
+      try { return await createChatRoom({ userId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
+    join: protectedProcedure.input(z.object({ roomId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      try { return await joinChatRoom(ctx.user.id, input.roomId); } catch (error) { return featureError(error); }
+    }),
+    messages: protectedProcedure.input(z.object({ roomId: z.number().int().positive(), limit: z.number().int().min(1).max(100).default(50) })).query(async ({ ctx, input }) => {
+      try { return await listChatMessages(ctx.user.id, input.roomId, input.limit); } catch (error) { return featureError(error); }
+    }),
+    send: protectedProcedure.input(z.object({ roomId: z.number().int().positive(), body: z.string().min(1).max(2_000) })).mutation(async ({ ctx, input }) => {
+      try { return await sendChatMessage(ctx.user.id, input.roomId, input.body); } catch (error) { return featureError(error); }
+    }),
+    status: protectedProcedure.input(z.object({ roomId: z.number().int().positive(), status: z.enum(["scheduled", "live", "closed", "archived"]) })).mutation(async ({ ctx, input }) => {
+      try { return await setChatRoomStatus(ctx.user.id, input.roomId, input.status); } catch (error) { return featureError(error); }
+    }),
+    report: protectedProcedure.input(z.object({ roomId: z.number().int().positive(), messageId: z.number().int().positive().optional(), reason: z.string().min(3).max(500) })).mutation(async ({ ctx, input }) => {
+      try { return await reportChatMessage(ctx.user.id, input.roomId, input.messageId, input.reason); } catch (error) { return featureError(error); }
+    }),
+  }),
+
   gifts: router({
     catalog: publicProcedure.query(() => listActiveGifts()),
     send: protectedProcedure
@@ -131,6 +162,8 @@ export const appRouter = router({
         giftId: z.number().int().positive(),
         commentId: z.number().int().positive().optional(),
         messageId: z.number().int().positive().optional(),
+        chatRoomId: z.number().int().positive().optional(),
+        chatMessageId: z.number().int().positive().optional(),
         idempotencyKey,
       }))
       .mutation(async ({ ctx, input }) => {

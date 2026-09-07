@@ -17,6 +17,7 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  accountType: mysqlEnum("accountType", ["member", "official", "demo"]).default("member").notNull(),
   bio: text("bio"),
   age: int("age"),
   location: varchar("location", { length: 120 }),
@@ -28,6 +29,11 @@ export const users = mysqlTable("users", {
   occupation: varchar("occupation", { length: 160 }),
   education: varchar("education", { length: 160 }),
   maritalStatus: mysqlEnum("maritalStatus", ["single", "divorced", "widowed"]).default("single"),
+  preferredAgeMin: int("preferredAgeMin"),
+  preferredAgeMax: int("preferredAgeMax"),
+  preferredLocations: text("preferredLocations"),
+  interests: text("interests"),
+  showCompatibility: int("showCompatibility").default(1).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -74,6 +80,61 @@ export const messages = mysqlTable(
     index("messages_sender_idx").on(table.senderId),
     index("messages_recipient_idx").on(table.recipientId),
   ],
+);
+
+export const chatRooms = mysqlTable(
+  "chat_rooms",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: text("description"),
+    status: mysqlEnum("status", ["draft", "scheduled", "live", "closed", "archived"]).default("draft").notNull(),
+    scheduledAt: timestamp("scheduledAt"),
+    closedAt: timestamp("closedAt"),
+    closedBy: int("closedBy"),
+    createdBy: int("createdBy").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [index("chat_rooms_status_idx").on(table.status), index("chat_rooms_created_idx").on(table.createdAt)],
+);
+
+export const chatMembers = mysqlTable(
+  "chat_members",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    roomId: int("roomId").notNull(),
+    userId: int("userId").notNull(),
+    role: mysqlEnum("role", ["member", "moderator", "owner"]).default("member").notNull(),
+    mutedUntil: timestamp("mutedUntil"),
+    joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("chat_member_unique").on(table.roomId, table.userId), index("chat_members_room_idx").on(table.roomId)],
+);
+
+export const chatMessages = mysqlTable(
+  "chat_messages",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    roomId: int("roomId").notNull(),
+    userId: int("userId").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [index("chat_messages_room_idx").on(table.roomId), index("chat_messages_created_idx").on(table.createdAt)],
+);
+
+export const chatReports = mysqlTable(
+  "chat_reports",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    roomId: int("roomId").notNull(),
+    messageId: int("messageId"),
+    reporterId: int("reporterId").notNull(),
+    reason: varchar("reason", { length: 500 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [index("chat_reports_room_idx").on(table.roomId), index("chat_reports_message_idx").on(table.messageId)],
 );
 
 export const interactions = mysqlTable(
@@ -126,6 +187,8 @@ export const giftTransactions = mysqlTable(
     postId: int("postId"),
     commentId: int("commentId"),
     messageId: int("messageId"),
+    chatRoomId: int("chatRoomId"),
+    chatMessageId: int("chatMessageId"),
     amountEgp: decimal("amountEgp", { precision: 12, scale: 2 }).notNull(),
     status: mysqlEnum("status", ["completed", "reversed"]).default("completed").notNull(),
     idempotencyKey: varchar("idempotencyKey", { length: 80 }).notNull(),
@@ -137,6 +200,8 @@ export const giftTransactions = mysqlTable(
     index("gift_tx_recipient_idx").on(table.recipientId),
     index("gift_tx_comment_idx").on(table.commentId),
     index("gift_tx_message_idx").on(table.messageId),
+    index("gift_tx_chat_room_idx").on(table.chatRoomId),
+    index("gift_tx_chat_message_idx").on(table.chatMessageId),
   ],
 );
 
@@ -148,3 +213,6 @@ export type Message = typeof messages.$inferSelect;
 export type Gift = typeof gifts.$inferSelect;
 export type Wallet = typeof wallets.$inferSelect;
 export type GiftTransaction = typeof giftTransactions.$inferSelect;
+export type ChatRoom = typeof chatRooms.$inferSelect;
+export type ChatMember = typeof chatMembers.$inferSelect;
+export type ChatMessage = typeof chatMessages.$inferSelect;

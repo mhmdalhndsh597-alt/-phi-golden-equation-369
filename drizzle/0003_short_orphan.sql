@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `accountType` enum('member','official','demo') DEFAULT 'member' NOT NULL;
