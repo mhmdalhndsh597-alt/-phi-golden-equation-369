@@ -28,7 +28,25 @@ import {
   sendChatMessage,
   setChatRoomStatus,
   reportChatMessage,
+  listChatMembers,
+  moderateChatMember,
 } from "./db";
+import {
+  addAgreementTerm,
+  answerVerifiedQuestion,
+  createAgreement,
+  createDeclaration,
+  createVerifiedQuestion,
+  downloadVaultDocument,
+  generateAgreementPdf,
+  listMyDeclarations,
+  listMySubscriptions,
+  listVerifiedConversation,
+  listVaultDocuments,
+  signAgreement,
+  uploadVaultDocument,
+} from "./transparency";
+import { listAdminQuestionProposals, listPopularQuestions, listPublicQuestionLibrary, proposeQuestion, reviewQuestionProposal, toggleQuestionVote } from "./questionGovernance";
 
 const idempotencyKey = z.string().regex(/^[A-Za-z0-9:_-]{16,80}$/, "Invalid idempotency key");
 
@@ -55,6 +73,10 @@ export const appRouter = router({
     users: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(100) }).optional()).query(({ input }) => listAdminUsers(input?.limit ?? 100)),
     posts: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(100) }).optional()).query(({ input }) => listAdminPosts(input?.limit ?? 100)),
     gifts: adminProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(100) }).optional()).query(({ input }) => listAdminGifts(input?.limit ?? 100)),
+    questionProposals: adminProcedure.query(() => listAdminQuestionProposals()),
+    reviewQuestion: adminProcedure.input(z.object({ proposalId: z.number().int().positive(), status: z.enum(["approved_library", "approved_popular", "rejected"]), rejectionReason: z.string().max(180).optional(), editedQuestion: z.string().min(12).max(500).optional() })).mutation(async ({ ctx, input }) => {
+      try { return await reviewQuestionProposal({ adminId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
   }),
 
   profile: router({
@@ -143,6 +165,9 @@ export const appRouter = router({
     messages: protectedProcedure.input(z.object({ roomId: z.number().int().positive(), limit: z.number().int().min(1).max(100).default(50) })).query(async ({ ctx, input }) => {
       try { return await listChatMessages(ctx.user.id, input.roomId, input.limit); } catch (error) { return featureError(error); }
     }),
+    members: protectedProcedure.input(z.object({ roomId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      try { return await listChatMembers(ctx.user.id, input.roomId); } catch (error) { return featureError(error); }
+    }),
     send: protectedProcedure.input(z.object({ roomId: z.number().int().positive(), body: z.string().min(1).max(2_000) })).mutation(async ({ ctx, input }) => {
       try { return await sendChatMessage(ctx.user.id, input.roomId, input.body); } catch (error) { return featureError(error); }
     }),
@@ -151,6 +176,9 @@ export const appRouter = router({
     }),
     report: protectedProcedure.input(z.object({ roomId: z.number().int().positive(), messageId: z.number().int().positive().optional(), reason: z.string().min(3).max(500) })).mutation(async ({ ctx, input }) => {
       try { return await reportChatMessage(ctx.user.id, input.roomId, input.messageId, input.reason); } catch (error) { return featureError(error); }
+    }),
+    moderate: protectedProcedure.input(z.object({ roomId: z.number().int().positive(), targetUserId: z.number().int().positive(), action: z.enum(["mute", "unmute", "block", "unblock"]), durationMinutes: z.number().int().min(1).max(10_080).optional() })).mutation(async ({ ctx, input }) => {
+      try { return await moderateChatMember({ actorUserId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
     }),
   }),
 
@@ -173,6 +201,57 @@ export const appRouter = router({
           return featureError(error);
         }
       }),
+  }),
+
+  transparency: router({
+    declarations: protectedProcedure.query(({ ctx }) => listMyDeclarations(ctx.user.id)),
+    confirmDeclaration: protectedProcedure.input(z.object({ maritalStatusDetail: z.string().min(2).max(120), hasChildren: z.boolean(), childrenCount: z.number().int().min(0).max(30), essentialObligations: z.string().min(2).max(4_000), additionalNotes: z.string().max(4_000).optional() })).mutation(async ({ ctx, input }) => {
+      try { return await createDeclaration({ userId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
+    askVerified: protectedProcedure.input(z.object({ respondentId: z.number().int().positive(), conversationKey: z.string().min(2).max(160), category: z.string().min(2).max(80), question: z.string().min(2).max(2_000) })).mutation(async ({ ctx, input }) => {
+      try { return await createVerifiedQuestion({ askerId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
+    answerVerified: protectedProcedure.input(z.object({ questionId: z.number().int().positive(), answer: z.string().min(1).max(4_000) })).mutation(async ({ ctx, input }) => {
+      try { return await answerVerifiedQuestion({ respondentId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
+    verifiedConversation: protectedProcedure.input(z.object({ conversationKey: z.string().min(2).max(160) })).query(({ ctx, input }) => listVerifiedConversation(ctx.user.id, input.conversationKey)),
+    questionLibrary: publicProcedure.query(() => listPublicQuestionLibrary()),
+    popularQuestions: publicProcedure.query(() => listPopularQuestions()),
+    proposeQuestion: protectedProcedure.input(z.object({ category: z.enum(["financial", "social", "family", "special_conditions"]), question: z.string().min(12).max(500) })).mutation(async ({ ctx, input }) => {
+      try { return await proposeQuestion({ proposerId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
+    voteQuestion: protectedProcedure.input(z.object({ proposalId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      try { return await toggleQuestionVote({ userId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
+  }),
+
+  vault: router({
+    documents: protectedProcedure.query(({ ctx }) => listVaultDocuments(ctx.user.id)),
+    upload: protectedProcedure.input(z.object({ title: z.string().min(2).max(180), mimeType: z.string().min(3).max(120), base64Data: z.string().min(8).max(15_000_000) })).mutation(async ({ ctx, input }) => {
+      try { return await uploadVaultDocument({ ownerId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
+    download: protectedProcedure.input(z.object({ documentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      try { return await downloadVaultDocument(ctx.user.id, input.documentId); } catch (error) { return featureError(error); }
+    }),
+  }),
+
+  agreements: router({
+    create: protectedProcedure.input(z.object({ counterpartyId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      try { return await createAgreement({ initiatorId: ctx.user.id, counterpartyId: input.counterpartyId }); } catch (error) { return featureError(error); }
+    }),
+    addTerm: protectedProcedure.input(z.object({ agreementId: z.number().int().positive(), termType: z.string().min(2).max(80), label: z.string().min(2).max(180), value: z.string().min(1).max(4_000) })).mutation(async ({ ctx, input }) => {
+      try { return await addAgreementTerm({ actorId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
+    sign: protectedProcedure.input(z.object({ agreementId: z.number().int().positive(), consentText: z.string().min(10).max(1_000) })).mutation(async ({ ctx, input }) => {
+      try { return await signAgreement({ signerId: ctx.user.id, ...input }); } catch (error) { return featureError(error); }
+    }),
+    generatePdf: protectedProcedure.input(z.object({ agreementId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      try { return await generateAgreementPdf({ userId: ctx.user.id, agreementId: input.agreementId }); } catch (error) { return featureError(error); }
+    }),
+  }),
+
+  subscriptions: router({
+    mine: protectedProcedure.query(({ ctx }) => listMySubscriptions(ctx.user.id)),
   }),
 });
 

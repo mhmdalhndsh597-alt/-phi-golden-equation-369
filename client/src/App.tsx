@@ -9,6 +9,7 @@ import ChatRoom from "./pages/ChatRoom";
 import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import Feed from "./pages/Feed";
+import Transparency from "./pages/Transparency";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -19,6 +20,7 @@ function Router() {
       <Route path={"/admin"} component={Admin} />
       <Route path="/feed" component={Feed} />
       <Route path={"/chat"} component={ChatRoom} />
+      <Route path={"/transparency"} component={Transparency} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

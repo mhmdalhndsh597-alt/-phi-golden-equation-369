@@ -2,7 +2,7 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { AdditionalPosts, nextFeedLimit, type FeedEntry } from "./feedView";
+import { AdditionalPosts, accountLabel, nextFeedLimit, type FeedEntry } from "./feedView";
 
 const entries: FeedEntry[] = [
   { id: 1, body: "المنشور الأول", imageUrl: null, author: { name: "عضو أول", location: "القاهرة", email: "one@example.com" } },
@@ -28,5 +28,11 @@ describe("Feed post list", () => {
     expect(nextFeedLimit(10)).toBe(20);
     expect(nextFeedLimit(95)).toBe(100);
     expect(nextFeedLimit(100)).toBe(100);
+  });
+
+  it("keeps official and demo account labels explicit", () => {
+    expect(accountLabel("official")).toBe("حساب رسمي");
+    expect(accountLabel("demo")).toBe("حساب تجريبي");
+    expect(accountLabel("member")).toBeNull();
   });
 });

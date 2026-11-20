@@ -18,7 +18,7 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-// Style note: Zawaj Pro follows the Neo-Arabic Editorial movement: warm ivory,
+// Style note: Phi - The Golden Equation follows the Neo-Arabic Editorial movement: warm ivory,
 // olive depth, aged copper accents, RTL composition, and quiet interactions.
 
 type Profile = {
@@ -118,14 +118,14 @@ export default function Home() {
               />
             </span>
             <span className="leading-none">
-              <span className="block font-serif text-xl tracking-wide text-[#fffaf2]">وصال</span>
-              <span className="mt-1 block text-[10px] tracking-[0.28em] text-[#e9c8ae]">WISAL</span>
+              <span className="block font-serif text-xl tracking-wide text-[#fffaf2]">فاي</span>
+              <span className="mt-1 block text-[10px] tracking-[0.28em] text-[#e9c8ae]">PHI</span>
             </span>
           </a>
 
           <nav className="hidden items-center gap-8 text-sm text-[#f3e9de] lg:flex" aria-label="التنقل الرئيسي">
             <a className="border-b border-[#d9a27a] pb-1 text-white" href="#discover">اكتشف</a>
-            <a className="transition-colors hover:text-[#f1c5a6]" href="#values">لماذا وصال؟</a>
+            <a className="transition-colors hover:text-[#f1c5a6]" href="#values">لماذا فاي؟</a>
             <a className="transition-colors hover:text-[#f1c5a6]" href="#privacy">الخصوصية</a>
           </nav>
 
@@ -159,7 +159,7 @@ export default function Home() {
           <div className="border-t border-white/15 bg-[#20352d]/95 px-5 py-4 lg:hidden">
             <div className="flex flex-col gap-3 text-sm text-[#fffaf2]">
               <a href="#discover" onClick={() => setMenuOpen(false)}>اكتشف</a>
-              <a href="#values" onClick={() => setMenuOpen(false)}>لماذا وصال؟</a>
+              <a href="#values" onClick={() => setMenuOpen(false)}>لماذا فاي؟</a>
               <a href="#privacy" onClick={() => setMenuOpen(false)}>الخصوصية</a>
               <button type="button" className="mt-2 border-t border-white/15 pt-3 text-right text-[#e9c8ae]" onClick={() => setAuthOpen(true)}>تسجيل الدخول أو إنشاء حساب</button>
             </div>
@@ -189,7 +189,7 @@ export default function Home() {
                 بداية تُشبهك
               </h1>
               <p className="mt-6 max-w-lg text-lg leading-9 text-[#e8e6dc] sm:text-xl">
-                وصال مساحة عربية جادة للتعارف باحترام، حيث تلتقي القلوب المتقاربة على ما يهم فعلًا.
+                فاي مساحة عربية جادة للتعارف باحترام، حيث تلتقي القلوب المتقاربة على ما يهم فعلًا.
               </p>
               <div className="mt-9 flex flex-wrap items-center gap-4">
                 <button
@@ -209,7 +209,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <div className="absolute bottom-12 left-5 hidden text-xs tracking-[0.28em] text-[#f1d2ba]/70 lg:block [writing-mode:vertical-rl]">WISAL · 2026</div>
+          <div className="absolute bottom-12 left-5 hidden text-xs tracking-[0.28em] text-[#f1d2ba]/70 lg:block [writing-mode:vertical-rl]">PHI · 2026</div>
         </section>
 
         <section id="discover" className="relative mx-auto max-w-7xl scroll-mt-24 px-5 py-20 lg:px-10 lg:py-28">
@@ -221,7 +221,7 @@ export default function Home() {
             <div className="order-1 flex items-center gap-3 lg:order-2 lg:flex-col">
               <span className="h-px w-10 bg-[#b77952] lg:h-10 lg:w-px" />
               <img src="/manus-storage/zawaj-mark_d13f02b1.png" alt="" className="h-9 w-9 rounded-full border border-[#cf9a78] bg-[#f1d7c4] p-1" />
-              <span className="hidden text-[10px] tracking-[0.2em] text-[#9a6a4d] lg:block [writing-mode:vertical-rl]">وصال</span>
+              <span className="hidden text-[10px] tracking-[0.2em] text-[#9a6a4d] lg:block [writing-mode:vertical-rl]">فاي</span>
             </div>
             <p className="order-3 max-w-xl text-base leading-8 text-[#637168] lg:justify-self-end">
               ابدأ من القيم، لا من الانطباع الأول. ابحث عن ملفات تعريفية توضح الاهتمامات ونمط الحياة وما يتطلع إليه كل شخص من هذه الرحلة.
@@ -319,9 +319,9 @@ export default function Home() {
           <div className="mx-auto grid max-w-7xl gap-12 px-5 py-20 lg:grid-cols-[.9fr_1.1fr] lg:px-10 lg:py-24">
             <div>
               <p className="text-sm font-semibold text-[#b77952]">الفرق في التفاصيل</p>
-              <div className="flex items-center gap-3 text-xs tracking-[0.18em] text-[#9a6a4d]"><img src="/manus-storage/zawaj-mark_d13f02b1.png" alt="" className="h-7 w-7 rounded-full border border-[#c99674] bg-[#f1d7c4] p-1" /> وصال / المعنى أولًا</div>
+              <div className="flex items-center gap-3 text-xs tracking-[0.18em] text-[#9a6a4d]"><img src="/manus-storage/zawaj-mark_d13f02b1.png" alt="" className="h-7 w-7 rounded-full border border-[#c99674] bg-[#f1d7c4] p-1" /> فاي / المعنى أولًا</div>
               <h2 className="mt-4 max-w-md font-serif text-4xl leading-tight text-[#24352d] sm:text-5xl">تعارف أكثر هدوءًا، ونية أكثر وضوحًا</h2>
-              <p className="mt-6 max-w-md leading-8 text-[#69766d]">صممنا وصال ليكون مكانًا يخفف الضجيج حول قرار مهم. لا وعود سريعة، ولا سباق لا ينتهي؛ فقط أدوات تساعدك أن ترى الإنسان كما هو.</p>
+              <p className="mt-6 max-w-md leading-8 text-[#69766d]">صممنا فاي ليكون مكانًا يخفف الضجيج حول قرار مهم. لا وعود سريعة، ولا سباق لا ينتهي؛ فقط أدوات تساعدك أن ترى الإنسان كما هو.</p>
               <button type="button" onClick={() => setAuthOpen(true)} className="mt-8 inline-flex items-center gap-3 rounded-full border border-[#b77952] px-5 py-3 text-sm font-semibold text-[#9d623f] transition-colors hover:bg-[#fffaf3]">اعرف كيف تبدأ <ArrowLeft size={16} /></button>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -348,7 +348,7 @@ export default function Home() {
             <div className="relative max-w-2xl">
               <span className="inline-flex items-center gap-2 rounded-full border border-[#d9a27a]/35 bg-[#d9a27a]/10 px-3 py-1.5 text-xs text-[#f0cdb5]"><ShieldCheck size={14} /> مساحة تحترمك</span>
               <h2 className="mt-5 font-serif text-4xl leading-tight sm:text-5xl">البداية لا تحتاج إلى ضجيج</h2>
-              <p className="mt-5 max-w-xl text-base leading-8 text-[#d7e0d8]">أنشئ ملفك عندما تشعر أن الوقت مناسب. لا نعرض ادعاءات أو أرقامًا مصطنعة؛ ما تراه هنا هو تصور أولي لتجربة وصال.</p>
+              <p className="mt-5 max-w-xl text-base leading-8 text-[#d7e0d8]">أنشئ ملفك عندما تشعر أن الوقت مناسب. لا نعرض ادعاءات أو أرقامًا مصطنعة؛ ما تراه هنا هو تصور أولي لتجربة فاي.</p>
               <button type="button" onClick={() => setAuthOpen(true)} className="mt-8 inline-flex items-center gap-3 rounded-full bg-[#d29a76] px-6 py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-[#c3865d] active:scale-[.97]">أنشئ ملفك الأول <ArrowLeft size={17} /></button>
             </div>
           </div>
@@ -357,8 +357,8 @@ export default function Home() {
 
       <footer className="border-t border-[#e5ddd2] bg-[#f4efe7]">
         <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-8 text-sm text-[#78847b] sm:flex-row sm:items-center sm:justify-between lg:px-10">
-          <div className="flex items-center gap-3"><img src="/manus-storage/zawaj-mark_d13f02b1.png" alt="" className="h-7 w-7" /><span>وصال — بداية تُشبهك</span></div>
-          <div className="flex flex-wrap gap-5"><button type="button" onClick={() => handleSoon("سياسة الخصوصية")} className="hover:text-[#a66743]">سياسة الخصوصية</button><button type="button" onClick={() => handleSoon("تواصل معنا")} className="hover:text-[#a66743]">تواصل معنا</button><span>© 2026 وصال</span></div>
+          <div className="flex items-center gap-3"><img src="/manus-storage/zawaj-mark_d13f02b1.png" alt="" className="h-7 w-7" /><span>فاي — بداية تُشبهك</span></div>
+          <div className="flex flex-wrap gap-5"><button type="button" onClick={() => handleSoon("سياسة الخصوصية")} className="hover:text-[#a66743]">سياسة الخصوصية</button><button type="button" onClick={() => handleSoon("تواصل معنا")} className="hover:text-[#a66743]">تواصل معنا</button><span>© 2026 فاي</span></div>
         </div>
       </footer>
 

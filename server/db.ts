@@ -20,6 +20,78 @@ import { moderateText } from "./moderation";
 import { calculateCompatibility } from "./compatibility";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let officialSeedPromise: Promise<void> | null = null;
+
+const OFFICIAL_SEED = [
+  {
+    openId: "wisal-official",
+    name: "فاي الرسمي",
+    email: "official@wisal.local",
+    bio: "الحساب الرسمي لشرح أدوات فاي وإعلانات المجتمع المهمة.",
+    location: "مجتمع فاي",
+    post: "أهلًا بك في فاي. التفاعل الاجتماعي هنا مجاني بالكامل، والهدايا اختيارية فقط ولا تمنح أي صلاحية إضافية.",
+  },
+  {
+    openId: "wisal-safety-guide",
+    name: "دليل فاي الآمن",
+    email: "safety@wisal.local",
+    bio: "إرشادات تعليمية لبداية تعارف واضحة ومحترمة.",
+    location: "دليل المجتمع",
+    post: "نصيحة البداية: تعرّف بهدوء، لا تشارك بياناتك الحساسة مبكرًا، وأبلغ عن أي سلوك يزعجك. الاحترام والوضوح أساس كل حوار.",
+  },
+  {
+    openId: "wisal-demo-salma",
+    name: "سلمى — حساب تجريبي",
+    email: "demo-salma@wisal.local",
+    bio: "ملف تجريبي يوضح شكل المنشورات والاهتمامات داخل فاي.",
+    location: "حساب تجريبي",
+    post: "هذا منشور تجريبي معلّم بوضوح لشرح تجربة الخلاصة الجديدة، وليس حسابًا لشخص حقيقي.",
+  },
+] as const;
+
+/** Idempotently creates transparent official/demo accounts and welcome posts. */
+export async function ensureOfficialSeedContent() {
+  if (!officialSeedPromise) {
+    officialSeedPromise = (async () => {
+      const db = await getDb();
+      if (!db) return;
+
+      for (const account of OFFICIAL_SEED) {
+        await db.insert(users).values({
+          openId: account.openId,
+          name: account.name,
+          email: account.email,
+          accountType: account.openId === "wisal-demo-salma" ? "demo" : "official",
+          bio: account.bio,
+          location: account.location,
+          verificationStatus: "verified",
+          interests: "الاحترام، الحوار، التعارف الهادئ",
+          showCompatibility: 0,
+        }).onDuplicateKeyUpdate({
+          set: {
+            name: account.name,
+            accountType: account.openId === "wisal-demo-salma" ? "demo" : "official",
+            bio: account.bio,
+            location: account.location,
+            verificationStatus: "verified",
+            showCompatibility: 0,
+          },
+        });
+
+        const author = await db.select({ id: users.id }).from(users).where(eq(users.openId, account.openId)).limit(1);
+        if (!author[0]) continue;
+        const existingPost = await db.select({ id: posts.id }).from(posts).where(eq(posts.userId, author[0].id)).limit(1);
+        if (!existingPost[0]) {
+          await db.insert(posts).values({ userId: author[0].id, body: account.post, imageUrl: null, imageMimeType: null, mediaType: null });
+        }
+      }
+    })().catch((error) => {
+      officialSeedPromise = null;
+      throw error;
+    });
+  }
+  return officialSeedPromise;
+}
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -88,7 +160,7 @@ export async function listCompatibilitySuggestions(userId: number, limit = 20) {
   if (!db) return [];
   const current = (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0];
   if (!current) return [];
-  const candidates = await db.select().from(users).where(and(sql`${users.id} <> ${userId}`, eq(users.showCompatibility, 1))).orderBy(desc(users.updatedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 50));
+  const candidates = await db.select().from(users).where(and(sql`${users.id} <> ${userId}`, eq(users.showCompatibility, 1), eq(users.accountType, "member"))).orderBy(desc(users.updatedAt)).limit(Math.min(Math.max(Math.trunc(limit), 1), 50));
   return candidates.map((candidate) => ({
     id: candidate.id,
     name: candidate.name,
@@ -98,6 +170,10 @@ export async function listCompatibilitySuggestions(userId: number, limit = 20) {
     accountType: candidate.accountType,
     compatibility: calculateCompatibility(current, candidate),
   })).sort((a, b) => b.compatibility.percentage - a.compatibility.percentage);
+}
+
+export function isSyntheticAccount(accountType: "member" | "official" | "demo") {
+  return accountType === "official" || accountType === "demo";
 }
 
 export function normalizeFeedLimit(limit = 30) {
@@ -161,6 +237,7 @@ export async function listAdminPosts(limit = 100) {
 export async function listFeed(limit = 30) {
   const db = await getDb();
   if (!db) return [];
+  await ensureOfficialSeedContent();
   const rows = await db
     .select({ post: posts, author: users })
     .from(posts)
@@ -216,6 +293,7 @@ async function requireRoomMember(userId: number, roomId: number) {
   if (!db) throw new Error("Database unavailable");
   const membership = await db.select().from(chatMembers).where(and(eq(chatMembers.roomId, roomId), eq(chatMembers.userId, userId))).limit(1);
   if (!membership[0]) throw new Error("You must join this room first");
+  if (membership[0].blockedAt) throw new Error("You are blocked from this room");
   return { db, member: membership[0] };
 }
 
@@ -225,8 +303,49 @@ export async function joinChatRoom(userId: number, roomId: number) {
   const room = await getChatRoom(roomId);
   if (!room) throw new Error("Room not found");
   if (!canJoinChatRoom(room.status)) throw new Error("This room is not open");
+  const existing = await db.select({ blockedAt: chatMembers.blockedAt }).from(chatMembers).where(and(eq(chatMembers.roomId, roomId), eq(chatMembers.userId, userId))).limit(1);
+  if (existing[0]?.blockedAt) throw new Error("You are blocked from this room");
   await db.insert(chatMembers).values({ roomId, userId, role: "member" }).onDuplicateKeyUpdate({ set: { roomId } });
   return room;
+}
+
+export function canModerateChatMember(actorRole: "member" | "moderator" | "owner" | "admin", targetRole: "member" | "moderator" | "owner") {
+  if (actorRole === "admin" || actorRole === "owner") return targetRole !== "owner" || actorRole === "admin";
+  return actorRole === "moderator" && targetRole === "member";
+}
+
+export type ChatModerationAction = "mute" | "unmute" | "block" | "unblock";
+
+export async function moderateChatMember(input: { actorUserId: number; roomId: number; targetUserId: number; action: ChatModerationAction; durationMinutes?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  if (input.actorUserId === input.targetUserId) throw new Error("You cannot moderate yourself");
+
+  const [actor] = await db.select({ role: users.role }).from(users).where(eq(users.id, input.actorUserId)).limit(1);
+  const [actorMembership] = await db.select({ role: chatMembers.role }).from(chatMembers).where(and(eq(chatMembers.roomId, input.roomId), eq(chatMembers.userId, input.actorUserId))).limit(1);
+  const [targetMembership] = await db.select().from(chatMembers).where(and(eq(chatMembers.roomId, input.roomId), eq(chatMembers.userId, input.targetUserId))).limit(1);
+  if (!targetMembership) throw new Error("Target user is not a member of this room");
+
+  const actorRole = actor?.role === "admin" ? "admin" : actorMembership?.role;
+  if (!actorRole || !canModerateChatMember(actorRole, targetMembership.role)) throw new Error("Only a room moderator can manage this member");
+
+  if (input.action === "mute") {
+    const minutes = Math.min(Math.max(Math.trunc(input.durationMinutes ?? 60), 1), 10_080);
+    await db.update(chatMembers).set({ mutedUntil: new Date(Date.now() + minutes * 60_000) }).where(eq(chatMembers.id, targetMembership.id));
+  } else if (input.action === "unmute") {
+    await db.update(chatMembers).set({ mutedUntil: null }).where(eq(chatMembers.id, targetMembership.id));
+  } else if (input.action === "block") {
+    await db.update(chatMembers).set({ blockedAt: new Date(), blockedBy: input.actorUserId, mutedUntil: null }).where(eq(chatMembers.id, targetMembership.id));
+  } else {
+    await db.update(chatMembers).set({ blockedAt: null, blockedBy: null }).where(eq(chatMembers.id, targetMembership.id));
+  }
+
+  return { success: true, action: input.action, targetUserId: input.targetUserId } as const;
+}
+
+export async function listChatMembers(userId: number, roomId: number) {
+  const { db } = await requireRoomMember(userId, roomId);
+  return db.select({ member: chatMembers, user: users }).from(chatMembers).leftJoin(users, eq(chatMembers.userId, users.id)).where(eq(chatMembers.roomId, roomId)).orderBy(chatMembers.joinedAt);
 }
 
 export async function listChatMessages(userId: number, roomId: number, limit = 50) {

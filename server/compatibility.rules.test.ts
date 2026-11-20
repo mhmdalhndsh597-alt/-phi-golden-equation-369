@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { calculateCompatibility } from "./compatibility";
-import { validateChatGiftRoomState, validateGiftContext, validateProfilePatch } from "./db";
+import { isSyntheticAccount, validateChatGiftRoomState, validateGiftContext, validateProfilePatch } from "./db";
 
 describe("compatibility and gift context rules", () => {
+  it("marks official and demo accounts as synthetic", () => {
+    expect(isSyntheticAccount("official")).toBe(true);
+    expect(isSyntheticAccount("demo")).toBe(true);
+    expect(isSyntheticAccount("member")).toBe(false);
+  });
+
   it("returns an explainable percentage from shared preferences", () => {
     const result = calculateCompatibility(
       { age: 30, location: "القاهرة", interests: "قراءة, سفر", skills: "تصميم", maritalStatus: "single", preferredAgeMin: 25, preferredAgeMax: 35 },
