@@ -91,7 +91,9 @@ export async function reviewQuestionProposal(input: { adminId: number; proposalI
   const duplicate = await db.select({ id: questionProposals.id }).from(questionProposals).where(and(eq(questionProposals.normalizedHash, editedHash), sql`${questionProposals.id} <> ${input.proposalId}`)).limit(1);
   if (duplicate[0]) throw new Error("The edited question duplicates another proposal");
   await db.update(questionProposals).set({ status: input.status, question, normalizedHash: editedHash, rejectionReason: input.status === "rejected" ? input.rejectionReason!.trim().slice(0, 180) : null, reviewedBy: input.adminId, reviewedAt: new Date() }).where(eq(questionProposals.id, input.proposalId));
-  if (input.status === "approved_library" || input.status === "approved_popular") await db.update(users).set({ transparencyPoints: sql`${users.transparencyPoints} + 1` }).where(eq(users.id, proposal.proposerId));
+  const acceptedNow = input.status === "approved_library" || input.status === "approved_popular";
+  const wasAlreadyAccepted = proposal.status === "approved_library" || proposal.status === "approved_popular";
+  if (acceptedNow && !wasAlreadyAccepted) await db.update(users).set({ transparencyPoints: sql`${users.transparencyPoints} + 1` }).where(eq(users.id, proposal.proposerId));
   await appendGovernanceEvent({ actorUserId: input.adminId, eventType: `question_${input.status}`, entityId: input.proposalId, payload: { questionHash: editedHash, rejectionReason: input.rejectionReason ?? null } });
   return { success: true as const, status: input.status, questionHash: editedHash };
 }

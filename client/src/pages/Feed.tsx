@@ -69,6 +69,8 @@ export default function Feed() {
   const [feedLimit, setFeedLimit] = useState(10);
   const feedQuery = trpc.feed.list.useQuery({ limit: feedLimit });
   const messagesQuery = trpc.feed.messages.useQuery({ limit: 10 }, { enabled: Boolean(user), retry: false });
+  const notificationsQuery = trpc.notifications.mine.useQuery({ limit: 8 }, { enabled: Boolean(user), retry: false });
+  const markNotificationsRead = trpc.notifications.markRead.useMutation();
   const walletQuery = trpc.wallet.me.useQuery(undefined, { enabled: Boolean(user), retry: false });
   const giftsQuery = trpc.gifts.catalog.useQuery();
   const likeMutation = trpc.feed.like.useMutation();
@@ -85,6 +87,7 @@ export default function Feed() {
   const [giftTarget, setGiftTarget] = useState<GiftTarget | null>(null);
   const [savedPostIds, setSavedPostIds] = useState<number[]>([]);
   const [cachedFeed, setCachedFeed] = useState<FeedRow[] | null>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   useEffect(() => {
     void getCachedFeed<FeedRow>().then(setCachedFeed);
@@ -171,6 +174,8 @@ export default function Feed() {
   }));
   const gifts: GiftOption[] = giftsQuery.data ?? [];
   const messagePreview = messagesQuery.isPending ? "جارٍ تحميل الرسائل..." : messagesQuery.isError ? "تعذر تحميل الرسائل حاليًا." : messagesQuery.data?.[0]?.message.body ?? "ابدأ حوارًا محترمًا، وستظهر رسائلك هنا.";
+  const notifications = notificationsQuery.data ?? [];
+  const unreadNotifications = notifications.filter((item) => !item.readAt).length;
 
   const requireAuth = (action: () => void) => {
     if (!user) {
@@ -230,7 +235,7 @@ export default function Feed() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3.5 lg:px-10">
           <a href="/" className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d3a181] bg-[#f0d7c2] p-2"><img src="/manus-storage/zawaj-mark_d13f02b1.png" alt="" className="h-full w-full object-contain" /></span><span><span className="block font-serif text-xl">فاي</span><span className="block text-[9px] tracking-[.27em] text-[#ae7250]">PHI / FEED</span></span></a>
           <div className="hidden items-center gap-8 text-sm text-[#66756b] md:flex"><a className="font-semibold text-[#a66743]" href="#feed">الرئيسية</a><a href="#messages" className="transition-colors hover:text-[#a66743]">الرسائل</a><a href="#saved" className="transition-colors hover:text-[#a66743]">المحفوظات</a></div>
-          <div className="flex items-center gap-3"><ConnectionStatus compact /><button type="button" aria-label="الإشعارات" className="rounded-full p-2 text-[#6d7a71] transition-colors hover:bg-[#f1ebe2]"><BellIcon /></button><span className="hidden text-sm text-[#6b786f] sm:inline">{user?.name ?? "زائر فاي"}</span><button type="button" onClick={() => user ? toast("ملفك الشخصي قريبًا") : startLogin()} className="h-9 w-9 overflow-hidden rounded-full border border-[#d9c8b8] bg-[#e7d8c8] p-0.5"><img src={user?.name ? "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=80&q=85" : "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&q=85"} alt="الملف الشخصي" className="h-full w-full rounded-full object-cover" /></button></div>
+          <div className="flex items-center gap-3"><ConnectionStatus compact /><div className="relative"><button type="button" aria-label="الإشعارات" onClick={() => { if (!user) { toast("سجّل الدخول لرؤية إشعاراتك"); startLogin(); return; } setNotificationsOpen((current) => !current); if (unreadNotifications) markNotificationsRead.mutate(); }} className="rounded-full p-2 text-[#6d7a71] transition-colors hover:bg-[#f1ebe2]"><BellIcon unread={unreadNotifications > 0} /></button>{notificationsOpen && <div className="absolute left-0 top-12 z-40 w-72 rounded-2xl border border-[#e3d9ce] bg-[#fffdf9] p-3 shadow-[0_18px_40px_rgba(36,53,45,.16)]"><p className="border-b border-[#eee7de] px-2 pb-2 text-xs font-semibold text-[#ad7150]">إشعارات موثقة من تفاعلات حقيقية</p>{notifications.length ? <div className="mt-2 space-y-1">{notifications.map((item) => <p key={item.id} className="rounded-xl bg-[#f5f1ea] px-3 py-2 text-xs leading-6 text-[#53645a]">{item.message}</p>)}</div> : <p className="px-2 py-5 text-center text-xs text-[#89958c]">لا توجد إشعارات بعد.</p>}</div>}</div><span className="hidden text-sm text-[#6b786f] sm:inline">{user?.name ?? "زائر فاي"}</span><button type="button" onClick={() => user ? toast("ملفك الشخصي قريبًا") : startLogin()} className="h-9 w-9 overflow-hidden rounded-full border border-[#d9c8b8] bg-[#e7d8c8] p-0.5"><img src={user?.name ? "https://images.unsplash.com/photo-1500648767791-00dcc994e43e?auto=format&fit=crop&w=80&q=85" : "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&q=85"} alt="الملف الشخصي" className="h-full w-full rounded-full object-cover" /></button></div>
         </div>
       </header>
 
@@ -268,6 +273,6 @@ export default function Feed() {
   );
 }
 
-function BellIcon() {
-  return <span className="relative block"><span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#c3865d]" /><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg></span>;
+function BellIcon({ unread = false }: { unread?: boolean }) {
+  return <span className="relative block"><span className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${unread ? "bg-[#c3865d]" : "bg-transparent"}`} /><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg></span>;
 }

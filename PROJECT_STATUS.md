@@ -12,6 +12,9 @@
 - Verified Q&A مع منع تعديل أو حذف الإجابة المثبتة.
 - خزنة وثائق AES-256-GCM مع تحقق SHA-256 وصلاحية المالك.
 - اتفاقات مبدئية بنسخ وتوقيعات، وتجميد النسخة بعد توقيع الطرفين.
+- حوكمة مجتمع الأسئلة: اقتراح بفئات، منع تكرار بالـ hash، فلترة أولية، تصويت، تصنيف مكتبة/شائع/مرفوض، ومراجعة إدارة مع سبب رفض.
+- نقاط مساهم في الشفافية مرتبطة بقبول السؤال، مع سجل قرار داخل hash chain.
+- إشعارات تفاعلات حقيقية للتعليق والإعجاب والمتابعة، مع منع إشعار الذات وعدم زرع إشعارات وهمية.
 - تجهيز AGPLv3 وREADME وCONTRIBUTING و`.env.example`.
 
 ## يحتاج تكاملًا خارجيًا قبل الإنتاج المالي
@@ -25,6 +28,8 @@
 ## بنية البيانات الجديدة
 
 `marriage_declarations`, `declaration_acceptances`, `transparency_events`, `verified_questions`, `verified_answers`, `vault_documents`, `premarital_agreements`, `agreement_terms`, `agreement_signatures`, `subscription_products`, `subscriptions`.
+
+وتشمل الجولة الأخيرة `question_proposals`, `question_proposal_votes`, `notifications` وحقل `users.transparencyPoints`.
 
 السجلات الموثقة append-only على مستوى إجراءات التطبيق: التصحيح يتم بإصدار جديد، وليس بتعديل أو حذف السجل القديم.
 

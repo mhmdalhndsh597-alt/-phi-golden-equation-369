@@ -11,6 +11,7 @@ import {
   listActiveGifts,
   listFeed,
   listMessages,
+  listUserNotifications,
   getProfile,
   listAdminPosts,
   listAdminUsers,
@@ -30,6 +31,7 @@ import {
   reportChatMessage,
   listChatMembers,
   moderateChatMember,
+  markNotificationsRead,
 } from "./db";
 import {
   addAgreementTerm,
@@ -67,6 +69,11 @@ export const appRouter = router({
 
   wallet: router({
     me: protectedProcedure.query(({ ctx }) => getWalletBalance(ctx.user.id)),
+  }),
+
+  notifications: router({
+    mine: protectedProcedure.input(z.object({ limit: z.number().int().min(1).max(100).default(50) }).optional()).query(({ ctx, input }) => listUserNotifications(ctx.user.id, input?.limit ?? 50)),
+    markRead: protectedProcedure.mutation(({ ctx }) => markNotificationsRead(ctx.user.id)),
   }),
 
   admin: router({

@@ -10,6 +10,7 @@ import {
   gifts,
   interactions,
   messages,
+  notifications,
   posts,
   users,
   wallets,
@@ -22,7 +23,7 @@ import { calculateCompatibility } from "./compatibility";
 let _db: ReturnType<typeof drizzle> | null = null;
 let officialSeedPromise: Promise<void> | null = null;
 
-const OFFICIAL_SEED = [
+export const OFFICIAL_SEED = [
   {
     openId: "wisal-official",
     name: "فاي الرسمي",
@@ -417,6 +418,8 @@ export async function addComment(input: { postId: number; userId: number; body: 
   const post = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, input.postId)).limit(1);
   if (!post[0]) throw new Error("Post not found");
   const result = await db.insert(comments).values({ postId: input.postId, userId: input.userId, body });
+  const postAuthor = (await db.select({ userId: posts.userId }).from(posts).where(eq(posts.id, input.postId)).limit(1))[0];
+  if (postAuthor && postAuthor.userId !== input.userId) await createUserNotification({ recipientId: postAuthor.userId, actorId: input.userId, type: "comment", entityId: Number(result[0].insertId), message: "أضاف عضو تعليقًا على منشورك" });
   return { id: result[0].insertId };
 }
 
@@ -435,7 +438,32 @@ export async function toggleInteraction(input: { userId: number; type: "like" | 
     return { active: false };
   }
   await db.insert(interactions).values({ userId: input.userId, type: input.type, postId: input.postId, targetUserId: input.targetUserId });
+  const recipientId = input.type === "follow" ? input.targetUserId! : (await db.select({ userId: posts.userId }).from(posts).where(eq(posts.id, input.postId!)).limit(1))[0]?.userId;
+  if (recipientId && recipientId !== input.userId) await createUserNotification({ recipientId, actorId: input.userId, type: input.type, entityId: input.postId ?? input.targetUserId, message: input.type === "follow" ? "بدأ عضو بمتابعتك" : "أعجب عضو بمنشورك" });
   return { active: true };
+}
+
+export async function createUserNotification(input: { recipientId: number; actorId: number; type: "like" | "comment" | "follow" | "gift" | "moderation"; entityId?: number; message: string }) {
+  const db = await getDb();
+  if (!db || !isRealUserNotification(input)) return;
+  await db.insert(notifications).values({ recipientId: input.recipientId, actorId: input.actorId, type: input.type, entityId: input.entityId ?? null, message: input.message.slice(0, 240) });
+}
+
+export function isRealUserNotification(input: { recipientId: number; actorId: number; message: string }) {
+  return input.recipientId > 0 && input.actorId > 0 && input.recipientId !== input.actorId && input.message.trim().length > 0;
+}
+
+export async function listUserNotifications(userId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(notifications).where(eq(notifications.recipientId, userId)).orderBy(desc(notifications.createdAt)).limit(Math.min(Math.max(limit, 1), 100));
+}
+
+export async function markNotificationsRead(userId: number) {
+  const db = await getDb();
+  if (!db) return { updated: 0 };
+  const result = await db.update(notifications).set({ readAt: new Date() }).where(and(eq(notifications.recipientId, userId), sql`${notifications.readAt} is null`));
+  return { updated: result[0].affectedRows ?? 0 };
 }
 
 export async function listMessages(userId: number, limit = 30) {
